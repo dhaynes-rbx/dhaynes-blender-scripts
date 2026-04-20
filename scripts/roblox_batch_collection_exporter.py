@@ -1,6 +1,6 @@
 bl_info = {
     "name": "Roblox Batch Collection Exporter",
-    "author": "Your Name",
+    "author": "Dustin Haynes dhaynes@roblox.com",
     "version": (1, 0),
     "blender": (3, 0, 0),
     "location": "View3D > Sidebar > Roblox",
