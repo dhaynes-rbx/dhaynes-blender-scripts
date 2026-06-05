@@ -1,0 +1,23 @@
+---
+description: All tool panels must live under the "Roblox" sidebar tab
+globs: dhaynes_roblox_scripts/tools/**/*.py
+alwaysApply: false
+---
+
+# Sidebar Tab Convention
+
+Every `bpy.types.Panel` in the DHaynes Roblox Scripts extension MUST appear
+under a single **Roblox** sidebar tab in the 3D Viewport. Always set:
+
+```python
+class SOME_PT_panel(bpy.types.Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Roblox'   # ALWAYS "Roblox" — never a per-tool category
+```
+
+- ❌ BAD: `bl_category = 'Eyelid Setup'` or any tool-specific tab name.
+- ✅ GOOD: `bl_category = 'Roblox'`.
+
+Use the panel's `bl_label` (and boxes/sub-panels within `draw`) to distinguish
+tools inside the shared tab, not separate `bl_category` values.

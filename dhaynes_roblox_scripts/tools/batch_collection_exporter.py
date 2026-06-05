@@ -1,13 +1,3 @@
-bl_info = {
-    "name": "Roblox Batch Collection Exporter",
-    "author": "Dustin Haynes dhaynes@roblox.com",
-    "version": (1, 0),
-    "blender": (3, 0, 0),
-    "location": "View3D > Sidebar > Roblox",
-    "description": "Exports top-level collections as individual FBX files for Roblox",
-    "category": "Import-Export",
-}
-
 import bpy
 import os
 from bpy_extras.io_utils import ExportHelper
@@ -228,7 +218,3 @@ def register():
 def unregister():
     for cls in classes:
         bpy.utils.unregister_class(cls)
-
-
-if __name__ == "__main__":
-    register()

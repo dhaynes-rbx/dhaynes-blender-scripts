@@ -1,0 +1,14 @@
+schema_version = "1.0.0"
+
+id = "dhaynes_roblox_scripts"
+version = "1.0.0"
+name = "DHaynes Roblox Scripts"
+tagline = "Collection of Roblox game-art tools"
+maintainer = "Dustin Haynes <dhaynes@roblox.com>"
+type = "add-on"
+
+blender_version_min = "4.2.0"
+
+license = [
+  "SPDX:GPL-3.0-or-later",
+]
