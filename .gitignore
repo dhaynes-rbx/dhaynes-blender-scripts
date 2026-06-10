@@ -1,0 +1,11 @@
+# Python bytecode cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build artifacts (Blender extension zips)
+*.zip
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
