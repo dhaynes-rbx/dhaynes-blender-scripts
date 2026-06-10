@@ -24,6 +24,16 @@ dhaynes_roblox_scripts/          # the extension (install this folder)
 - **Facial Vertex Group & Bone Constraint Wizard** — step-through wizard for
   assigning `HK-*` facial vertex groups and generating `MCH-*` tracking bones
   with Damped Track constraints. Sidebar: **View3D > Eyelid Setup**.
+- **Eye Skin Weighting Tool** — step-through wizard for assigning eyelid loops to
+  `DEF-Eyelid-*` vertex groups. Pick the **Object**, **Armature**, and **Source
+  Template Bone**, then step through selecting each loop. Steps are: set the
+  Source Eye Loop (`HLP-EyeLoop.L`), inner/outer corners, then one step per upper
+  loop, then one per lower loop — the upper/lower
+  step count is derived automatically from the existing `DEF-Eyelid-Upper#.L` /
+  `DEF-Eyelid-Lower#.L` groups (inner→outer). Each step sets weight `1.0` on the
+  selection via weight-paint *Set Weight* with Auto-Normalize on and the source
+  bone group locked, so the source weights are preserved.
+  Sidebar: **View3D > Roblox**.
 
 ## Install (Blender 4.2+)
 
