@@ -14,6 +14,7 @@ dhaynes_roblox_scripts/          # the extension (install this folder)
 └── tools/
     ├── batch_collection_exporter.py
     ├── bone_mirror_subtargets.py
+    ├── export_deform_rig.py
     ├── eye_skin_weighting_tool.py
     └── facial_rigging_tools.py
 ```
@@ -74,6 +75,16 @@ All panels live under a single **View3D > Roblox** sidebar tab.
 - **Bone Mirror Subtargets** ("Bone Mirror Subtargets" panel) — in Pose Mode,
   flips the trailing `.L`/`.R` on every constraint subtarget of the selected pose
   bones (e.g. retarget mirrored bones from `*.L` groups to `*.R`).
+- **Export Deform Rig** ("Export Deform Rig" panel) — builds a flat, deform-only
+  armature for clean Roblox export. Pick the **Source Armature** (control rig), a
+  **Root Bone** name, and an optional **Export Name**, then Build. It creates a new
+  collection under the Scene Collection containing: an armature with one root and
+  every `use_deform` bone copied in flat (same names, same rest transforms) with a
+  **Copy Transforms** constraint back to the source bone; plus a linked duplicate
+  of each skinned mesh, retargeted to the new armature. Animate on the control
+  rig, then bake the export armature (Visual Keying, Clear Constraints) and export
+  just that collection. Non-destructive and re-runnable — it regenerates the
+  export collection each time.
 
 ## Install (Blender 4.2+)
 
