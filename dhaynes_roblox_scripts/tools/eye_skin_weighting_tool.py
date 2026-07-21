@@ -3,38 +3,44 @@ import re
 import bpy
 
 
-SOURCE_LOOP_GROUP = "HLP-EyeLoop.L"
-
-# Step 1 captures the source eye loop; the next two steps are the corners.
-# Upper/lower loop steps are appended dynamically from the mesh's existing
-# DEF-Eyelid-Upper#/Lower# groups.
-BASE_STEPS = [
-    {
-        "select": "Set Source Eye Loop",
-        "group": SOURCE_LOOP_GROUP,
-        "button": "Set Source Eye Loop (.L)",
-        "section": "Source",
-        "action": "source_loop",
+# --- FEATURE CONFIGURATION ---
+# Each feature builds an ordered list of weighting steps. The first step always
+# records the "source loop" (a plain HLP-* group). Every subsequent entry in
+# "order" is either:
+#   fixed    - a single named DEF-* group (corners, and the side-less lip center).
+#              An 'optional' fixed step is only shown when that group already
+#              exists on the mesh.
+#   numbered - a family of DEF-*<n><suffix> groups, discovered on the mesh and
+#              expanded in ascending order (inner->outer for eyelids,
+#              corner->center for lips).
+FEATURES = {
+    'Eyelid': {
+        'source_group': "HLP-EyeLoop.L",
+        'source_select': "Set Source Eye Loop",
+        'source_button': "Set Source Eye Loop (.L)",
+        'order': [
+            {'kind': 'fixed', 'group': "DEF-Eyelid-Corner-Inner.L", 'select': "Select Left Inner Corner Loop", 'button': "Assign Inner Corner (.L)", 'section': "Corners"},
+            {'kind': 'fixed', 'group': "DEF-Eyelid-Corner-Outer.L", 'select': "Select Left Outer Corner Loop", 'button': "Assign Outer Corner (.L)", 'section': "Corners"},
+            {'kind': 'numbered', 'prefix': "DEF-Eyelid-Upper", 'suffix': ".L", 'section': "Upper Loops", 'select_fmt': "Select Upper Loop {n} (inner\u2192outer)", 'button_fmt': "Assign Upper Loop {n} (.L)"},
+            {'kind': 'numbered', 'prefix': "DEF-Eyelid-Lower", 'suffix': ".L", 'section': "Lower Loops", 'select_fmt': "Select Lower Loop {n} (inner\u2192outer)", 'button_fmt': "Assign Lower Loop {n} (.L)"},
+        ],
     },
-    {
-        "select": "Select Left Inner Corner Loop",
-        "group": "DEF-Eyelid-Corner-Inner.L",
-        "button": "Assign Inner Corner (.L)",
-        "section": "Corners",
-        "action": "weight",
+    'Lip': {
+        'source_group': "HLP-LipLoop",
+        'source_select': "Set Source Lip Loop",
+        'source_button': "Set Source Lip Loop",
+        'order': [
+            {'kind': 'fixed', 'group': "DEF-Lip-Corner.L", 'select': "Select Left Corner Loop", 'button': "Assign Left Corner", 'section': "Corners"},
+            {'kind': 'fixed', 'group': "DEF-Lip-Corner.R", 'select': "Select Right Corner Loop", 'button': "Assign Right Corner", 'section': "Corners"},
+            {'kind': 'fixed', 'group': "DEF-Lip-Upper", 'select': "Select Upper Center Loop", 'button': "Assign Upper Center", 'section': "Upper Loops", 'optional': True},
+            {'kind': 'numbered', 'prefix': "DEF-Lip-Upper", 'suffix': ".R", 'section': "Upper Loops", 'select_fmt': "Select Upper Loop {n} .R (corner\u2192center)", 'button_fmt': "Assign Upper Loop {n} (.R)"},
+            {'kind': 'numbered', 'prefix': "DEF-Lip-Upper", 'suffix': ".L", 'section': "Upper Loops", 'select_fmt': "Select Upper Loop {n} .L (corner\u2192center)", 'button_fmt': "Assign Upper Loop {n} (.L)"},
+            {'kind': 'fixed', 'group': "DEF-Lip-Lower", 'select': "Select Lower Center Loop", 'button': "Assign Lower Center", 'section': "Lower Loops", 'optional': True},
+            {'kind': 'numbered', 'prefix': "DEF-Lip-Lower", 'suffix': ".R", 'section': "Lower Loops", 'select_fmt': "Select Lower Loop {n} .R (corner\u2192center)", 'button_fmt': "Assign Lower Loop {n} (.R)"},
+            {'kind': 'numbered', 'prefix': "DEF-Lip-Lower", 'suffix': ".L", 'section': "Lower Loops", 'select_fmt': "Select Lower Loop {n} .L (corner\u2192center)", 'button_fmt': "Assign Lower Loop {n} (.L)"},
+        ],
     },
-    {
-        "select": "Select Left Outer Corner Loop",
-        "group": "DEF-Eyelid-Corner-Outer.L",
-        "button": "Assign Outer Corner (.L)",
-        "section": "Corners",
-        "action": "weight",
-    },
-]
-
-UPPER_PREFIX = "DEF-Eyelid-Upper"
-LOWER_PREFIX = "DEF-Eyelid-Lower"
-SIDE_SUFFIX = ".L"
+}
 
 # Generous upper bound for the "Jump to Step" field; real range is clamped to
 # the dynamic step count at runtime.
@@ -43,7 +49,7 @@ _MAX_STEPS = 100
 
 def _collect_numbered_groups(obj, prefix, suffix):
     """Return ``[(number, group_name), ...]`` for groups like ``<prefix><n><suffix>``,
-    sorted ascending by number (inner corner -> outer corner in world space)."""
+    sorted ascending by number."""
     pattern = re.compile(r'^' + re.escape(prefix) + r'(\d+)' + re.escape(suffix) + r'$')
     found = []
     for vg in obj.vertex_groups:
@@ -54,29 +60,61 @@ def _collect_numbered_groups(obj, prefix, suffix):
     return found
 
 
-def build_eye_skin_steps(obj):
-    """Build the ordered step list: source loop, corners, upper loops, lower loops."""
-    steps = [dict(step) for step in BASE_STEPS]
+def build_eye_skin_steps(obj, feature):
+    """Build the ordered step list for the given feature: source loop, then each
+    fixed/numbered group defined by the feature config."""
+    cfg = FEATURES.get(feature, FEATURES['Eyelid'])
 
-    if obj and obj.type == 'MESH':
-        for num, name in _collect_numbered_groups(obj, UPPER_PREFIX, SIDE_SUFFIX):
+    steps = [{
+        "select": cfg['source_select'],
+        "group": cfg['source_group'],
+        "button": cfg['source_button'],
+        "section": "Source",
+        "action": "source_loop",
+    }]
+
+    is_mesh = bool(obj and obj.type == 'MESH')
+
+    for item in cfg['order']:
+        if item['kind'] == 'fixed':
+            if item.get('optional') and not (is_mesh and obj.vertex_groups.get(item['group'])):
+                continue
             steps.append({
-                "select": f"Select Upper Loop {num} (inner\u2192outer)",
-                "group": name,
-                "button": f"Assign Upper Loop {num} (.L)",
-                "section": "Upper Loops",
+                "select": item['select'],
+                "group": item['group'],
+                "button": item['button'],
+                "section": item['section'],
                 "action": "weight",
             })
-        for num, name in _collect_numbered_groups(obj, LOWER_PREFIX, SIDE_SUFFIX):
-            steps.append({
-                "select": f"Select Lower Loop {num} (inner\u2192outer)",
-                "group": name,
-                "button": f"Assign Lower Loop {num} (.L)",
-                "section": "Lower Loops",
-                "action": "weight",
-            })
+        elif item['kind'] == 'numbered':
+            if not is_mesh:
+                continue
+            for num, name in _collect_numbered_groups(obj, item['prefix'], item['suffix']):
+                steps.append({
+                    "select": item['select_fmt'].format(n=num),
+                    "group": name,
+                    "button": item['button_fmt'].format(n=num),
+                    "section": item['section'],
+                    "action": "weight",
+                })
 
     return steps
+
+
+def _draw_info(layout, text, max_chars=40):
+    """Draw a paragraph of description as wrapped, dimmed label lines."""
+    col = layout.column(align=True)
+    col.scale_y = 0.7
+    line = ""
+    for word in text.split():
+        candidate = f"{line} {word}".strip()
+        if line and len(candidate) > max_chars:
+            col.label(text=line)
+            line = word
+        else:
+            line = candidate
+    if line:
+        col.label(text=line)
 
 
 def get_eye_mesh(context):
@@ -100,8 +138,9 @@ def get_eye_armature_bones(self, context):
 
 class MESH_OT_eye_skin_wizard(bpy.types.Operator):
     """Assign the selected loop to the current step's vertex group, mimicking the
-    by-hand UI behavior: Auto-Normalize on with the Source Template Bone group
-    locked so its weights are preserved"""
+    by-hand UI behavior: Auto-Normalize on with every group locked except the
+    Source Template mask and the DEF-<feature> groups, so assigning weight 1.0
+    subtracts from the Source Template mask"""
     bl_idname = "mesh.eye_skin_wizard"
     bl_label = "Eye Skin Weighting Step"
     bl_options = {'REGISTER', 'UNDO'}
@@ -117,7 +156,7 @@ class MESH_OT_eye_skin_wizard(bpy.types.Operator):
             self.report({'ERROR'}, "You must be in Edit Mode on the Mesh.")
             return {'CANCELLED'}
 
-        steps = build_eye_skin_steps(obj)
+        steps = build_eye_skin_steps(obj, scene.eye_skin_feature)
         step = min(scene.eye_skin_step, len(steps))
         scene.eye_skin_step = step
 
@@ -153,8 +192,8 @@ class MESH_OT_eye_skin_wizard(bpy.types.Operator):
         return {'FINISHED'}
 
     def assign_source_loop(self, context, obj, target_name, indices):
-        """Add the selected verts to the ``HLP-EyeLoop`` group and record it as the
-        Source Eye Loop. This is a plain group assignment, not a weighting step."""
+        """Add the selected verts to the ``HLP-*`` group and record it as the
+        Source Loop. This is a plain group assignment, not a weighting step."""
         target_vg = obj.vertex_groups.get(target_name) or obj.vertex_groups.new(name=target_name)
 
         bpy.ops.object.mode_set(mode='OBJECT')
@@ -164,17 +203,20 @@ class MESH_OT_eye_skin_wizard(bpy.types.Operator):
         context.scene.eye_skin_source_loop = target_name
 
     def assign_locked_weight(self, context, obj, target_name, source_name):
-        """Set weight 1.0 on the selected verts for ``target_name`` while keeping
-        the ``source_name`` group locked, driven through Blender's own weight
-        paint "Set Weight" so Auto-Normalize and lock behavior match the UI."""
+        """Set weight 1.0 on the selected verts for ``target_name``. Every vertex
+        group is locked EXCEPT the Source Template group and the DEF-<feature>
+        groups, so Auto-Normalize (via weight-paint "Set Weight") pulls the
+        assigned weight out of the Source Template mask."""
         ts = context.scene.tool_settings
+        def_prefix = f"DEF-{context.scene.eye_skin_feature}"
 
         target_vg = obj.vertex_groups.get(target_name) or obj.vertex_groups.new(name=target_name)
 
+        # Recompute all lock flags from scratch each step: unlock the source mask
+        # and every DEF-<feature> group, lock everything else.
         for vg in obj.vertex_groups:
-            if vg.name == source_name:
-                vg.lock_weight = True
-        target_vg.lock_weight = False
+            keep_unlocked = (vg.name == source_name) or vg.name.startswith(def_prefix)
+            vg.lock_weight = not keep_unlocked
 
         obj.vertex_groups.active_index = target_vg.index
         ts.vertex_group_weight = 1.0
@@ -194,7 +236,7 @@ class MESH_OT_reset_eye_skin_wizard(bpy.types.Operator):
 
     def execute(self, context):
         context.scene.eye_skin_step = 1
-        self.report({'INFO'}, "Eye skin wizard reset to Step 1.")
+        self.report({'INFO'}, "Skin weighting wizard reset to Step 1.")
         return {'FINISHED'}
 
 
@@ -202,7 +244,7 @@ class VIEW3D_PT_eye_skin_weighting_panel(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'Roblox'
-    bl_label = 'Eye Skin Weighting'
+    bl_label = 'Eye/Lip Skin Weighting'
 
     def draw(self, context):
         layout = self.layout
@@ -210,7 +252,12 @@ class VIEW3D_PT_eye_skin_weighting_panel(bpy.types.Panel):
         obj = context.object
 
         box = layout.box()
-        box.label(text="Eye Skin Weighting Tool", icon='MOD_VERTEX_WEIGHT')
+        box.label(text="Skin Weighting Tool", icon='MOD_VERTEX_WEIGHT')
+        _draw_info(box, "Step 4: Select successive loops for your facial feature "
+                        "and set the weighting to zero, subtracting from a base "
+                        "mask vertex group.")
+        box.separator()
+        box.prop(scene, "eye_skin_feature", text="Feature")
         box.prop(scene, "eye_skin_object")
         box.prop(scene, "eye_skin_armature")
 
@@ -222,10 +269,10 @@ class VIEW3D_PT_eye_skin_weighting_panel(bpy.types.Panel):
             box.prop_search(
                 scene, "eye_skin_source_loop",
                 mesh_obj, "vertex_groups",
-                text="Source Eye Loop",
+                text="Source Loop",
             )
         else:
-            box.prop(scene, "eye_skin_source_loop", text="Source Eye Loop")
+            box.prop(scene, "eye_skin_source_loop", text="Source Loop")
 
         box.separator()
 
@@ -234,7 +281,7 @@ class VIEW3D_PT_eye_skin_weighting_panel(bpy.types.Panel):
             box.prop(scene, "eye_skin_step")
             return
 
-        steps = build_eye_skin_steps(get_eye_mesh(context))
+        steps = build_eye_skin_steps(get_eye_mesh(context), scene.eye_skin_feature)
         current_step = min(scene.eye_skin_step, len(steps))
 
         box.label(text=f"Weighting Steps ({current_step}/{len(steps)}):", icon='CHECKBOX_DEHLT')
@@ -277,16 +324,25 @@ classes = (
 
 
 def register():
+    bpy.types.Scene.eye_skin_feature = bpy.props.EnumProperty(
+        name="Feature",
+        description="Which ribbon is being weighted; controls the DEF-* group naming and step order",
+        items=[
+            ('Eyelid', 'Eyelid', 'Weight eyelid loops to DEF-Eyelid-*.L groups'),
+            ('Lip', 'Lip', 'Weight lip loops to DEF-Lip-* groups (L/R corners, center, per-side loops)'),
+        ],
+        default='Eyelid',
+    )
     bpy.types.Scene.eye_skin_object = bpy.props.PointerProperty(
         name="Object",
         type=bpy.types.Object,
-        description="The eye mesh to be skinned",
+        description="The mesh to be skinned",
         poll=lambda self, obj: obj.type == 'MESH',
     )
     bpy.types.Scene.eye_skin_armature = bpy.props.PointerProperty(
         name="Armature",
         type=bpy.types.Object,
-        description="The armature the eye mesh will be bound to",
+        description="The armature the mesh will be bound to",
         poll=lambda self, obj: obj.type == 'ARMATURE',
     )
     bpy.types.Scene.eye_skin_source_bone = bpy.props.EnumProperty(
@@ -295,8 +351,8 @@ def register():
         items=get_eye_armature_bones,
     )
     bpy.types.Scene.eye_skin_source_loop = bpy.props.StringProperty(
-        name="Source Eye Loop",
-        description="Vertex group on the eye mesh that defines the source eye loop",
+        name="Source Loop",
+        description="Vertex group on the mesh that defines the source loop",
     )
     bpy.types.Scene.eye_skin_step = bpy.props.IntProperty(
         name="Jump to Step",
@@ -314,6 +370,7 @@ def unregister():
     for cls in classes:
         bpy.utils.unregister_class(cls)
 
+    del bpy.types.Scene.eye_skin_feature
     del bpy.types.Scene.eye_skin_object
     del bpy.types.Scene.eye_skin_armature
     del bpy.types.Scene.eye_skin_source_bone

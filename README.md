@@ -13,27 +13,67 @@ dhaynes_roblox_scripts/          # the extension (install this folder)
 ├── __init__.py                  # auto-loader: registers everything in tools/
 └── tools/
     ├── batch_collection_exporter.py
+    ├── bone_mirror_subtargets.py
+    ├── eye_skin_weighting_tool.py
     └── facial_rigging_tools.py
 ```
 
 ## Tools
 
+All panels live under a single **View3D > Roblox** sidebar tab.
+
 - **Batch Collection Exporter** — exports each top-level collection under the
   scene root as its own FBX (meshes + armatures), Roblox-style. Also exports the
-  Outliner-active collection on its own. Sidebar: **View3D > Roblox**.
-- **Facial Vertex Group & Bone Constraint Wizard** — step-through wizard for
-  assigning `HK-*` facial vertex groups and generating `MCH-*` tracking bones
-  with Damped Track constraints. Sidebar: **View3D > Eyelid Setup**.
-- **Eye Skin Weighting Tool** — step-through wizard for assigning eyelid loops to
-  `DEF-Eyelid-*` vertex groups. Pick the **Object**, **Armature**, and **Source
-  Template Bone**, then step through selecting each loop. Steps are: set the
-  Source Eye Loop (`HLP-EyeLoop.L`), inner/outer corners, then one step per upper
-  loop, then one per lower loop — the upper/lower
-  step count is derived automatically from the existing `DEF-Eyelid-Upper#.L` /
-  `DEF-Eyelid-Lower#.L` groups (inner→outer). Each step sets weight `1.0` on the
-  selection via weight-paint *Set Weight* with Auto-Normalize on and the source
-  bone group locked, so the source weights are preserved.
-  Sidebar: **View3D > Roblox**.
+  Outliner-active collection on its own.
+- **Ribbon Vertex Group Setup** ("Ribbon Vertex Group Setup" panel) —
+  step-through wizard for assigning `HK-*` ribbon vertex groups and generating
+  constraint bones plus `DEF-*` deform bones. A **Feature** dropdown switches
+  between two ribbon layouts:
+  - **Eyelid** — pick a **Side** (`.L`/`.R`), then step through: inner corner,
+    outer corner, upper loop, lower loop. The upper/lower loops are numbered
+    `1..n` left-to-right by world X, producing `HK-Eyelid-*.{side}` groups.
+  - **Lip** — no manual side; side is auto-detected per vertex by world X
+    (`+X = .L`, `−X = .R`). Steps: left corner (`HK-Lip-Corner.L`), right corner
+    (`HK-Lip-Corner.R`), upper loop, lower loop. For each loop the single center
+    vertex (nearest `X=0`) becomes the side-less `HK-Lip-Upper` / `HK-Lip-Lower`,
+    and the remaining verts are split by side and numbered from the corner inward
+    (lower number = closer to the corner), e.g. `HK-Lip-Upper1.R`,
+    `HK-Lip-Upper2.R`, … / `HK-Lip-Upper1.L`, … Corner verts already assigned are
+    excluded from the loop steps automatically.
+
+  **Generate Helper Empties** creates one `HLP-*` Empty per `HK-*` hook vertex
+  (name mirrors the group, `HK-` → `HLP-`), vertex-parents it to that vertex on
+  the ribbon, snaps it onto the vertex in world space, and applies all transforms
+  to deltas. It's idempotent — re-running reuses existing empties by name.
+
+  **Generate Damped Track Bones / Generate Stretch Bones** (the button/label
+  follows the feature) then builds the bones and a parented `DEF-*` deform bone at
+  each vertex:
+  - **Eyelid** — clones the chosen Source Template Bone for each `HK-*` group,
+    adds a **Damped Track** constraint aimed at that group's mesh vertices,
+    applies the pose as rest, and names the trackers `MCH-*`.
+  - **Lip** — creates one `STR-*` bone per **helper empty** (running from the
+    Source Template Bone to the empty) with a **Stretch To** constraint targeting
+    that empty (no rest bake). Requires the helper empties from Step 2 to exist.
+- **Skin Weighting Tool** ("Eye/Lip Skin Weighting" panel) — step-through wizard for
+  weighting the character mesh loops to the generated `DEF-*` groups. A
+  **Feature** dropdown selects **Eyelid** or **Lip**. Pick the **Object**,
+  **Armature**, and **Source Template Bone**, then step through selecting each
+  loop:
+  - **Eyelid** — Source Eye Loop (`HLP-EyeLoop.L`), inner/outer corners, then one
+    step per `DEF-Eyelid-Upper#.L` / `DEF-Eyelid-Lower#.L` group (inner→outer).
+  - **Lip** — Source Lip Loop (`HLP-LipLoop`), left/right corners, then for each
+    of upper/lower: the center group (if present) followed by the `.R` then `.L`
+    numbered loops (corner→center).
+
+  The upper/lower step counts are derived automatically from the existing `DEF-*`
+  groups on the mesh. Each step sets weight `1.0` on the selection via
+  weight-paint *Set Weight* with Auto-Normalize on; every group is locked except
+  the Source Template mask and the `DEF-<feature>` groups, so assigning a loop
+  subtracts from the mask.
+- **Bone Mirror Subtargets** ("Bone Mirror Subtargets" panel) — in Pose Mode,
+  flips the trailing `.L`/`.R` on every constraint subtarget of the selected pose
+  bones (e.g. retarget mirrored bones from `*.L` groups to `*.R`).
 
 ## Install (Blender 4.2+)
 
